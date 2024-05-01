@@ -2,7 +2,7 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 ARG BUILD_CONFIGURATION=Release
 WORKDIR /src
-COPY Azure.OpenAI.ChargebackProxy/ ./Azure.OpenAI.ChargebackProxy
+COPY AzureAI.Proxy/ ./AzureAI.Proxy
 RUN dotnet restore AzureAI.Proxy/AzureAI.Proxy.csproj
 WORKDIR /src/AzureAI.Proxy
 RUN dotnet build AzureAI.Proxy.csproj -c $BUILD_CONFIGURATION -o /app/build
