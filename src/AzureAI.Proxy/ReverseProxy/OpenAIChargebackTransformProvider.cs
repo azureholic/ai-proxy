@@ -1,5 +1,4 @@
-﻿using AsyncAwaitBestPractices;
-using Azure.Core;
+﻿using Azure.Core;
 using AzureAI.Proxy.OpenAIHandlers;
 using AzureAI.Proxy.Services;
 using System.Net;
@@ -57,6 +56,42 @@ internal class OpenAIChargebackTransformProvider : ITransformProvider
             requestContext.ProxyRequest.Headers.Remove("Authorization");
             requestContext.ProxyRequest.Headers.Add("Authorization", $"Bearer {accessToken}");
 
+            // Read the request body as a string
+            var requestBody = requestContext.HttpContext.Request.Body;
+            using (var reader = new StreamReader(requestBody, Encoding.UTF8, leaveOpen: true))
+            {
+                var requestBodyString = await reader.ReadToEndAsync();
+                // Reset the stream position to the beginning
+                requestBody.Position = 0;
+                // Deserialize the JSON string into a JsonNode
+                JsonNode jsonNode = JsonSerializer.Deserialize<JsonNode>(requestBodyString);
+                //is streaming Request?
+                //if yes and no usage is not included, add it to the request
+                if (jsonNode["stream"] != null && jsonNode["stream"].ToString() == "true")
+                {
+                    if (jsonNode["stream_options"] == null || jsonNode["stream_options"]["include_usage"].ToString() == "false")
+                    {
+                        // Add property to the jsonNode
+                        if (jsonNode["stream_options"] is JsonObject chatCompletionStreamOptions)
+                        {
+                            chatCompletionStreamOptions["include_usage"] = true;
+                        }
+                        else
+                        {
+                            jsonNode["stream_options"] = new JsonObject
+                            {
+                                ["include_usage"] = true
+                            };
+                        }
+                    }
+                    // Serialize the JsonNode back to a JSON string
+                    var updatedRequestBodyString = jsonNode.ToJsonString();
+                    var requestContent = new StringContent(updatedRequestBodyString, Encoding.UTF8, "application/json");
+                    //update the proxy request
+                    requestContext.ProxyRequest.Content = requestContent;
+                }
+            }
+
         });
         context.AddResponseTransform(async responseContext =>
         {
@@ -113,7 +148,7 @@ internal class OpenAIChargebackTransformProvider : ITransformProvider
                     record.Consumer = "Unknown Consumer";
                 }
 
-                bool firstChunck = true;
+               
                 var capturedBody = stringBuilder.ToString();
                 var chunks = capturedBody.Split("data:");
                 foreach (var chunk in chunks)
@@ -138,13 +173,13 @@ internal class OpenAIChargebackTransformProvider : ITransformProvider
                                     record.ObjectType = objectValue;
                                     break;
                                 case "chat.completion.chunk":
-                                    if (firstChunck)
+                                    //does jsonNode contain Usage?
+                                    //Usage is the last chunk before "DONE"
+                                    if (jsonNode["usage"] is not null)
                                     {
-                                        record = Tokens.CalculateChatInputTokens(responseContext.HttpContext.Request, record);
+                                        Usage.Handle(jsonNode, ref record);
                                         record.ObjectType = objectValue;
-                                        firstChunck = false;
                                     }
-                                    ChatCompletionChunck.Handle(jsonNode, ref record);
                                     break;
                                 case "list":
                                     if (jsonNode["data"][0]["object"].ToString() == "embedding")
@@ -163,7 +198,7 @@ internal class OpenAIChargebackTransformProvider : ITransformProvider
                 }
 
                 record.TotalTokens = record.InputTokens + record.OutputTokens;
-                _logIngestionService.LogAsync(record).SafeFireAndForget();
+                await _logIngestionService.LogAsync(record);
             }
         });
     }

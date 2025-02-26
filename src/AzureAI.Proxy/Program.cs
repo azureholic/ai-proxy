@@ -1,12 +1,13 @@
+using Azure.Core.Diagnostics;
+using Azure.Identity;
 using Azure.Monitor.OpenTelemetry.AspNetCore;
 using AzureAI.Proxy.ReverseProxy;
 using AzureAI.Proxy.Services;
+using Microsoft.Extensions.Azure;
+using Microsoft.Extensions.Configuration;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Yarp.ReverseProxy.Health;
-using Microsoft.Extensions.Azure;
-using Microsoft.Extensions.Configuration;
-using Azure.Identity;
 
 
 
@@ -26,9 +27,15 @@ builder.Services.ConfigureOpenTelemetryTracerProvider((sp, builder) =>
     builder.ConfigureResource(resourceBuilder =>
         resourceBuilder.AddAttributes(resourceAttributes)));
 
+//diagnostics for troubleshooting
+using AzureEventSourceListener listener = AzureEventSourceListener.CreateConsoleLogger();
+
+
 //Managed Identity Service
 builder.Services.AddSingleton<IManagedIdentityService, ManagedIdentityService>();
 var managedIdentityService = builder.Services.BuildServiceProvider().GetService<IManagedIdentityService>();
+
+var connfigEndpoint = builder.Configuration["APPCONFIG_ENDPOINT"];
 
 //Azure App Configuration
 builder.Configuration.AddAzureAppConfiguration(options =>

@@ -82,7 +82,7 @@ public class ProxyConfiguration
                         Policy = ThrottlingHealthPolicy.ThrottlingPolicyName
                     }
                 },
-                //LoadBalancingPolicy = LoadBalancingPolicies.RoundRobin,
+                
                 HttpRequest = new ForwarderRequestConfig()
             };
 

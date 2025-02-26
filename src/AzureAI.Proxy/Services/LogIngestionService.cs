@@ -8,14 +8,12 @@ namespace AzureAI.Proxy.Services
     public class LogIngestionService : ILogIngestionService
     {
         private readonly IConfiguration _config;
-        //private readonly IManagedIdentityService _managedIdentityService;
         private readonly LogsIngestionClient _logsIngestionClient;
         private readonly ILogger _logger;
         
         
 
         public LogIngestionService(
-          //  IManagedIdentityService managedIdentityService, 
             LogsIngestionClient logsIngestionClient,
             IConfiguration config
 ,           ILogger<LogIngestionService> logger
