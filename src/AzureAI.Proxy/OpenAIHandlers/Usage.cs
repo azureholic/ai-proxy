@@ -7,19 +7,40 @@ namespace AzureAI.Proxy.OpenAIHandlers
     {
         public static void Handle(JsonNode jsonNode, ref LogAnalyticsRecord record)
         {
-            //read tokens from responsebody - not streaming, so data is just there
-            var modelName = jsonNode["model"].ToString();
-            record.Model = modelName;
+            // Check if model node exists before accessing it
+            var modelNode = jsonNode["model"];
+            if (modelNode != null)
+            {
+                record.Model = modelNode.ToString();
+            }
+            
+            // Check if usage node exists
             var usage = jsonNode["usage"];
-            if (usage["completion_tokens"] != null)
+            if (usage == null)
             {
-                record.OutputTokens = int.Parse(usage["completion_tokens"].ToString());
+                // If usage information is not available, we can't extract token counts
+                return;
             }
-            else
+            
+            // Handle completion tokens (may not exist in all responses)
+            var completionTokensNode = usage["completion_tokens"];
+            if (completionTokensNode != null)
             {
-                record.OutputTokens = 0;
+                if (int.TryParse(completionTokensNode.ToString(), out int completionTokens))
+                {
+                    record.OutputTokens = completionTokens;
+                }
             }
-            record.InputTokens = int.Parse(usage["prompt_tokens"].ToString());
+            
+            // Handle prompt tokens (should exist, but verify)
+            var promptTokensNode = usage["prompt_tokens"];
+            if (promptTokensNode != null)
+            {
+                if (int.TryParse(promptTokensNode.ToString(), out int promptTokens))
+                {
+                    record.InputTokens = promptTokens;
+                }
+            }
         }
     }
 }

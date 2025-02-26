@@ -8,14 +8,12 @@ namespace AzureAI.Proxy.Services
     public class LogIngestionService : ILogIngestionService
     {
         private readonly IConfiguration _config;
-        //private readonly IManagedIdentityService _managedIdentityService;
         private readonly LogsIngestionClient _logsIngestionClient;
         private readonly ILogger _logger;
         
         
 
         public LogIngestionService(
-          //  IManagedIdentityService managedIdentityService, 
             LogsIngestionClient logsIngestionClient,
             IConfiguration config
 ,           ILogger<LogIngestionService> logger
@@ -36,10 +34,22 @@ namespace AzureAI.Proxy.Services
 
                 //RBAC Monitoring Metrics Publisher needed
                 RequestContent content = RequestContent.Create(JsonSerializer.Serialize(jsonContent));
-                var ruleId = _config.GetSection("AzureMonitor")["DataCollectionRuleImmutableId"].ToString();
-                var stream = _config.GetSection("AzureMonitor")["DataCollectionRuleStream"].ToString();
-
-                Response response = await _logsIngestionClient.UploadAsync(ruleId, stream, content);
+                
+                // Get configuration values with null checks
+                var ruleIdValue = _config.GetSection("AzureMonitor")["DataCollectionRuleImmutableId"];
+                var streamValue = _config.GetSection("AzureMonitor")["DataCollectionRuleStream"];
+                
+                if (string.IsNullOrEmpty(ruleIdValue))
+                {
+                    throw new InvalidOperationException("AzureMonitor:DataCollectionRuleImmutableId configuration is missing or empty");
+                }
+                
+                if (string.IsNullOrEmpty(streamValue))
+                {
+                    throw new InvalidOperationException("AzureMonitor:DataCollectionRuleStream configuration is missing or empty");
+                }
+                
+                Response response = await _logsIngestionClient.UploadAsync(ruleIdValue, streamValue, content);
 
             }
             catch (Exception ex)

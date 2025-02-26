@@ -5,7 +5,7 @@ namespace AzureAI.Proxy.ReverseProxy;
 public class RetryMiddleware
 {
     private readonly RequestDelegate _next;
-     private readonly ILogger _logger;
+    private readonly ILogger _logger;
 
     public RetryMiddleware(RequestDelegate next, ILoggerFactory loggerFactory)
     {
@@ -27,9 +27,22 @@ public class RetryMiddleware
         while (shouldRetry)
         {
             var reverseProxyFeature = context.GetReverseProxyFeature();
-            var destination = PickOneDestination(reverseProxyFeature);
+            if (reverseProxyFeature == null)
+            {
+                _logger.LogWarning("ReverseProxyFeature is null, cannot continue with retry logic");
+                await _next(context);
+                return;
+            }
 
-            reverseProxyFeature.AvailableDestinations = new List<DestinationState>(destination);
+            var selectedDestination = PickOneDestination(reverseProxyFeature);
+            if (selectedDestination == null)
+            {
+                _logger.LogWarning("No destination available, cannot continue with retry logic");
+                await _next(context);
+                return;
+            }
+
+            reverseProxyFeature.AvailableDestinations = new List<DestinationState>{ selectedDestination };
 
             if (retryCount > 0)
             {
@@ -51,7 +64,14 @@ public class RetryMiddleware
 
     private static int GetNumberHealthyEndpoints(HttpContext context)
     {
-        return context.GetReverseProxyFeature().AllDestinations.Count(m => m.Health.Passive is DestinationHealth.Healthy or DestinationHealth.Unknown);
+        var reverseProxyFeature = context.GetReverseProxyFeature();
+        if (reverseProxyFeature?.AllDestinations == null)
+        {
+            return 0;
+        }
+        
+        return reverseProxyFeature.AllDestinations.Count(m => 
+            m != null && m.Health.Passive is DestinationHealth.Healthy or DestinationHealth.Unknown);
     }
 
 
@@ -59,60 +79,90 @@ public class RetryMiddleware
     /// The native YARP ILoadBalancingPolicy interface does not play well with HTTP retries, that's why we're adding this custom load-balancing code.
     /// This needs to be reevaluated to a ILoadBalancingPolicy implementation when YARP supports natively HTTP retries.
     /// </summary>
-    private DestinationState PickOneDestination(IReverseProxyFeature reverseProxyFeature)
+    private DestinationState? PickOneDestination(IReverseProxyFeature reverseProxyFeature)
     {
-        var allDestinations = reverseProxyFeature.AllDestinations;
+        var allDestinations = reverseProxyFeature?.AllDestinations;
+        if (allDestinations == null || allDestinations.Count == 0)
+        {
+            _logger.LogWarning("No destinations available in the proxy feature");
+            return null;
+        }
         
         var selectedPriority = int.MaxValue;
         var availableBackends = new List<int>();
 
         for (var i = 0; i < allDestinations.Count; i++)
         {
-            var destination = allDestinations[i];
-
-            if (destination.Health.Passive != DestinationHealth.Unhealthy)
+            var currentDestination = allDestinations[i];
+            if (currentDestination == null || currentDestination.Model?.Config == null)
             {
-                var destinationPriority = int.Parse(destination.Model.Config.Metadata["priority"]);
+                continue;
+            }
 
-                if (destinationPriority < selectedPriority)
+            if (currentDestination.Health.Passive != DestinationHealth.Unhealthy)
+            {
+                // Check if metadata and priority key exist
+                if (currentDestination.Model.Config.Metadata != null && 
+                    currentDestination.Model.Config.Metadata.TryGetValue("priority", out var priorityValue) &&
+                    !string.IsNullOrEmpty(priorityValue) &&
+                    int.TryParse(priorityValue, out var destinationPriority))
                 {
-                    selectedPriority = destinationPriority;
-                    availableBackends.Clear();
-                    availableBackends.Add(i);
+                    if (destinationPriority < selectedPriority)
+                    {
+                        selectedPriority = destinationPriority;
+                        availableBackends.Clear();
+                        availableBackends.Add(i);
+                    }
+                    else if (destinationPriority == selectedPriority)
+                    {
+                        availableBackends.Add(i);
+                    }
                 }
-                else if (destinationPriority == selectedPriority)
+                else
                 {
+                    // Default priority if not specified
                     availableBackends.Add(i);
                 }
             }
         }
-
+        
         int backendIndex;
-
-       
-        if (availableBackends.Count > 0)
+        if (availableBackends.Count == 0)
         {
-            if (availableBackends.Count == 1)
+            //Returns a random backend if all backends are unhealthy
+            _logger.LogWarning($"All backends are unhealthy or have invalid configuration. Picking a random backend...");
+            
+            // Ensure there's at least one destination
+            if (allDestinations.Count > 0)
             {
-                //Returns the only available backend if we have only one available
-                backendIndex = availableBackends[0];
+                backendIndex = Random.Shared.Next(0, allDestinations.Count);
+                var pickedDestination = allDestinations[backendIndex];
+                var address = pickedDestination?.Model?.Config?.Address ?? "unknown address";
+                _logger.LogInformation($"Picked backend: {address}");
+                return pickedDestination;
             }
-            else
-            {
-                //Returns a random backend from the list if we have more than one available with the same priority
-                backendIndex = availableBackends[Random.Shared.Next(0, availableBackends.Count)];
-            }
+            
+            return null;
+        }
+        
+        
+        if (availableBackends.Count == 1)
+        {
+            //Returns the only available backend if we have only one available
+            backendIndex = availableBackends[0];
         }
         else
         {
-            //Returns a random  backend if all backends are unhealthy
-            _logger.LogWarning($"All backends are unhealthy. Picking a random backend...");
-            backendIndex = Random.Shared.Next(0, allDestinations.Count);
+            //Returns a random backend from the list if we have more than one available with the same priority
+            backendIndex = availableBackends[Random.Shared.Next(0, availableBackends.Count)];
         }
 
-        var pickedDestination = allDestinations[backendIndex];
-        _logger.LogInformation($"Picked backend: {pickedDestination.Model.Config.Address}");
+        var finalDestination = allDestinations[backendIndex];
+        if (finalDestination?.Model?.Config != null)
+        {
+            _logger.LogInformation($"Picked backend: {finalDestination.Model.Config.Address}");
+        }
 
-        return pickedDestination;
+        return finalDestination;
     }
 }
