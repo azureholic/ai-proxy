@@ -17,11 +17,7 @@ namespace AzureAI.Proxy.Services
 
         public TokenCredential GetTokenCredential()
         {
-            if (_environment.IsDevelopment())
-                _credential = new AzureCliCredential();
-            else
-                _credential = new DefaultAzureCredential(GetDefaultAzureCredentialOptions());
-
+            _credential = new DefaultAzureCredential(GetDefaultAzureCredentialOptions());
             return _credential;
         }
 

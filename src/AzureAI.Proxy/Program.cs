@@ -28,14 +28,14 @@ builder.Services.ConfigureOpenTelemetryTracerProvider((sp, builder) =>
         resourceBuilder.AddAttributes(resourceAttributes)));
 
 //diagnostics for troubleshooting
-using AzureEventSourceListener listener = AzureEventSourceListener.CreateConsoleLogger();
-
+if (builder.Environment.IsDevelopment())
+{     
+    using AzureEventSourceListener listener = AzureEventSourceListener.CreateConsoleLogger();
+}
 
 //Managed Identity Service
 builder.Services.AddSingleton<IManagedIdentityService, ManagedIdentityService>();
 var managedIdentityService = builder.Services.BuildServiceProvider().GetService<IManagedIdentityService>();
-
-var connfigEndpoint = builder.Configuration["APPCONFIG_ENDPOINT"];
 
 //Azure App Configuration
 builder.Configuration.AddAzureAppConfiguration(options =>
