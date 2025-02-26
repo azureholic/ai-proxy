@@ -9,8 +9,6 @@ using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 using Yarp.ReverseProxy.Health;
 
-
-
 var builder = WebApplication.CreateBuilder(args);
 
 //Application Insights
@@ -35,33 +33,65 @@ if (builder.Environment.IsDevelopment())
 
 //Managed Identity Service
 builder.Services.AddSingleton<IManagedIdentityService, ManagedIdentityService>();
-var managedIdentityService = builder.Services.BuildServiceProvider().GetService<IManagedIdentityService>();
+// Build service provider only once to get the managed identity service
+
+
+var serviceProvider = builder.Services.BuildServiceProvider();
+var managedIdentityService = serviceProvider.GetService<IManagedIdentityService>();
+if (managedIdentityService == null)
+{
+    throw new InvalidOperationException("Failed to resolve IManagedIdentityService");
+}
 
 //Azure App Configuration
-builder.Configuration.AddAzureAppConfiguration(options =>
-    options.Connect(
-                new Uri(builder.Configuration["APPCONFIG_ENDPOINT"]),
-                managedIdentityService.GetTokenCredential()
-            )
-);
+var appConfigEndpoint = builder.Configuration["APPCONFIG_ENDPOINT"];
+if (!string.IsNullOrEmpty(appConfigEndpoint))
+{
+    var tokenCredential = managedIdentityService.GetTokenCredential();
+    if (tokenCredential == null)
+    {
+        throw new InvalidOperationException("Token credential is null");
+    }
+    
+    builder.Configuration.AddAzureAppConfiguration(options =>
+        options.Connect(new Uri(appConfigEndpoint), tokenCredential)
+    );
+}
 
 var config = builder.Configuration;
 
-var endpoint = new Uri(config.GetSection("AzureMonitor")["DataCollectionEndpoint"].ToString());
+// Add null check and default value for the DataCollectionEndpoint
+var monitorSection = config.GetSection("AzureMonitor");
+var endpointString = monitorSection["DataCollectionEndpoint"];
+if (string.IsNullOrEmpty(endpointString))
+{
+    throw new InvalidOperationException("AzureMonitor:DataCollectionEndpoint configuration is missing or empty");
+}
+var endpoint = new Uri(endpointString);
 
 builder.Services.AddAzureClients(clientBuilder =>
 {
     clientBuilder.AddLogsIngestionClient(endpoint);
-    clientBuilder.UseCredential(managedIdentityService.GetTokenCredential());
+    var credential = managedIdentityService.GetTokenCredential();
+    if (credential == null)
+    {
+        throw new InvalidOperationException("Token credential is null");
+    }
+    clientBuilder.UseCredential(credential);
 });
 
 //Log Ingestion for charge back data
 builder.Services.AddTransient<ILogIngestionService, LogIngestionService>();
 
 //Setup Reverse Proxy
-var proxyConfig = new ProxyConfiguration(config["AzureAIProxy:ProxyConfig"]);
-var routes = proxyConfig.GetRoutes();
-var clusters = proxyConfig.GetClusters();
+var proxyConfigPath = config["AzureAIProxy:ProxyConfig"];
+if (string.IsNullOrEmpty(proxyConfigPath))
+{
+    throw new InvalidOperationException("AzureAIProxy:ProxyConfig configuration is missing or empty");
+}
+var proxyConfig = new ProxyConfiguration(proxyConfigPath);
+var routes = proxyConfig.GetRoutes() ?? throw new InvalidOperationException("Proxy routes cannot be null");
+var clusters = proxyConfig.GetClusters() ?? throw new InvalidOperationException("Proxy clusters cannot be null");
 
 builder.Services.AddSingleton<IPassiveHealthCheckPolicy, ThrottlingHealthPolicy>();
 

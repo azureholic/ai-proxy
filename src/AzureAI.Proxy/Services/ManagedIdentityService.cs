@@ -5,7 +5,7 @@ namespace AzureAI.Proxy.Services
 {
     public class ManagedIdentityService : IManagedIdentityService
     {
-        private TokenCredential _credential;
+        private TokenCredential? _credential;
         private readonly IConfiguration _config;
         private readonly IWebHostEnvironment _environment;
 
