@@ -2,19 +2,21 @@
   "routes": [
     {
       "name": "gpt-35-turbo",
+      "type": "openai",
       "endpoints": [
         {
           "address": "https://rbr-openai-sweden.openai.azure.com/",
-          "priority": 1
+          "priority": 2
         },
         {
           "address": "https://rbr-openai-frc.openai.azure.com/",
-          "priority": 2
+          "priority": 1
         }
       ]
     },
     {
       "name": "text-embedding-ada-002",
+      "type": "openai",
       "endpoints": [
         {
           "address": "https://rbr-openai-sweden.openai.azure.com/",
@@ -28,14 +30,33 @@
     },
     {
       "name": "gpt-35-turbo-withpolicy",
+      "type": "openai",
       "endpoints": [
         {
           "address": "https://rbr-openai-sweden.openai.azure.com/",
           "priority": 1
         }
       ]
+    },
+    {
+      "name": "phi4",
+      "type": "maas",
+      "endpoints": [
+        {
+          "address": "https://phi-4-rbr.swedencentral.models.ai.azure.com/",
+          "priority": 1
+        }
+      ]
+    },
+    {
+      "name": "phi4mini",
+      "type": "maas",
+      "endpoints": [
+        {
+          "address": "https://phi-4-mini-instruct-rbr.swedencentral.models.ai.azure.com/",
+          "priority": 1
+        }
+      ]
     }
   ]
 }
-
-

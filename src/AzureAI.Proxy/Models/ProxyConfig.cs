@@ -8,6 +8,7 @@ public class ProxyConfig
 public class Route
 {
     public string? Name { get; set; }
+    public string? Type { get; set; }
     public List<Endpoint> Endpoints { get; set; } = new List<Endpoint>();
 }
 

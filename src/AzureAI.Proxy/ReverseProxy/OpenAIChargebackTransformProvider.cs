@@ -2,6 +2,7 @@
 using AzureAI.Proxy.OpenAIHandlers;
 using AzureAI.Proxy.Services;
 using System.Net;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -34,26 +35,50 @@ internal class OpenAIChargebackTransformProvider : ITransformProvider
             throw new InvalidOperationException("Failed to get token credential from managed identity service");
     }
 
-    public void ValidateRoute(TransformRouteValidationContext context) { return; }
+    public void ValidateRoute(TransformRouteValidationContext context) { 
+            
+        return; 
+    }
 
-    public void ValidateCluster(TransformClusterValidationContext context) { return; }
+    public void ValidateCluster(TransformClusterValidationContext context) { 
+        return; 
+    }
     
     public void Apply(TransformBuilderContext context)
     {
-        context.AddRequestTransform(async requestContext => {
+        
+        context.AddRequestTransform(async requestContext =>
+        {
+            Console.WriteLine(requestContext.ProxyRequest.RequestUri);
             //enable buffering allows us to read the requestbody twice (one for forwarding, one for analysis)
             requestContext.HttpContext.Request.EnableBuffering();
+            
 
-            //check accessToken before replacing the Auth Header
-            if (String.IsNullOrEmpty(accessToken) || OpenAIAccessToken.IsTokenExpired(accessToken))
+            if (!requestContext.DestinationPrefix.Contains("models.ai.azure.com"))
             {
-                accessToken = await OpenAIAccessToken.GetAccessTokenAsync(_managedIdentityCredential, CancellationToken.None);
-            }
+                //check accessToken before replacing the Auth Header
+                if (String.IsNullOrEmpty(accessToken) || OpenAIAccessToken.IsTokenExpired(accessToken))
+                {
+                    accessToken = await OpenAIAccessToken.GetAccessTokenAsync(_managedIdentityCredential, CancellationToken.None);
+                }
 
-            //replace auth header with the accesstoken of the managed indentity of the proxy
-            requestContext.ProxyRequest.Headers.Remove("api-key");
-            requestContext.ProxyRequest.Headers.Remove("Authorization");
-            requestContext.ProxyRequest.Headers.Add("Authorization", $"Bearer {accessToken}");
+                //replace auth header with the accesstoken of the managed indentity of the proxy
+                requestContext.ProxyRequest.Headers.Remove("api-key");
+                requestContext.ProxyRequest.Headers.Remove("Authorization");
+                requestContext.ProxyRequest.Headers.Add("Authorization", $"Bearer {accessToken}");
+            }
+            else
+            {
+                // Modify the request path to remove "models/some-model"
+                var path = requestContext.Path;
+                var segments = path.Value.Split('/');
+                if (segments.Length > 2 && segments[1] == "models")
+                {
+                    // Reconstruct the path without the "models/some-model" segment
+                    var newPath = "/" + string.Join("/", segments.Skip(3));
+                    requestContext.Path = new PathString(newPath);
+                }
+            }
 
             // Read the request body as a string
             var requestBody = requestContext.HttpContext.Request.Body;
@@ -123,6 +148,7 @@ internal class OpenAIChargebackTransformProvider : ITransformProvider
                     }
                 }
             }
+            
         });
         
         context.AddResponseTransform(async responseContext =>

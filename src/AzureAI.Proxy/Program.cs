@@ -20,7 +20,14 @@ var resourceAttributes = new Dictionary<string, object> {
     { "service.instance.id", instanceId }
 };
 
-builder.Services.AddOpenTelemetry().UseAzureMonitor();
+builder.Services.AddOpenTelemetry().UseAzureMonitor()
+    .WithTracing(t =>
+    {
+        // Listen to the YARP tracing activities
+        t.AddSource("Yarp.ReverseProxy");
+        
+    });
+;
 builder.Services.ConfigureOpenTelemetryTracerProvider((sp, builder) =>
     builder.ConfigureResource(resourceBuilder =>
         resourceBuilder.AddAttributes(resourceAttributes)));

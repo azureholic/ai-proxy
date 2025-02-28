@@ -3,6 +3,7 @@ using Yarp.ReverseProxy.Configuration;
 using System.Text.Json;
 using Yarp.ReverseProxy.LoadBalancing;
 using Yarp.ReverseProxy.Forwarder;
+using Yarp.ReverseProxy.Transforms;
 
 namespace AzureAI.Proxy.ReverseProxy;
 
@@ -39,17 +40,36 @@ public class ProxyConfiguration
                 continue; // Skip routes without names
             }
 
-            RouteConfig routeConfig = new()
+            if (route.Type == "openai")
             {
-                RouteId = route.Name,
-                ClusterId = route.Name,
-                Match = new RouteMatch()
+                RouteConfig routeConfig = new()
                 {
-                    Path = $"openai/deployments/{route.Name}/" + "{**catch-all}"
-                }
-            };
+                    RouteId = route.Name,
+                    ClusterId = route.Name,
+                    Match = new RouteMatch()
+                    {
+                        Path = $"openai/deployments/{route.Name}/" + "{**catch-all}"
+                    }
+                };
+                routes.Add(routeConfig);
+            }
 
-            routes.Add(routeConfig);
+            if (route.Type == "maas")
+            {
+                RouteConfig routeConfig = new()
+                {
+                    RouteId = route.Name,
+                    ClusterId = route.Name,
+                    Match = new RouteMatch()
+                    {
+                        Path = $"models/{route.Name}/" + "{**catch-all}"
+                    }
+                };
+                
+                routes.Add(routeConfig);
+            }
+
+           
         }
 
         return routes.AsReadOnly();
